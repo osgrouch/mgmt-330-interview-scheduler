@@ -1,0 +1,673 @@
+openapi: 3.1.0
+info:
+  title: MGMT 330 Interview Scheduler API
+  version: 0.2.0-draft
+  description: |
+    Contract for the Next.js Route Handlers. Follows erd.md and model-tier.md.
+    If code needs a route or field that is not here, change this file first (decision D32).
+
+    Conventions
+    - All bodies are JSON.
+    - **Times are never UTC timestamps.** A time is a local calendar day (`day`, `YYYY-MM-DD`,
+      in the event timezone) plus `startMinute` / `endMinute`, minutes after local midnight.
+      `480` is 8:00 AM, `1200` is 8:00 PM. `endMinute` is exclusive (decision D34).
+    - Candidate availability is a list of **windows** `{ day, startMinute, endMinute }`. A day may have
+      any number of separate windows (for example 8-9 AM, 12-2 PM and 7-8 PM is `480-540`, `720-840`,
+      `1140-1200`), and each day has its own. Edges are multiples of 30 inside 480-1200 (D35).
+    - A "slot" is a 30-minute cell `{ day, startMinute }`. The heatmap is per slot; the server expands windows.
+    - An interview lasts `event.interviewMinutes` (a multiple of 30, set by the admin). An assignment
+      stores its own `endMinute`, a snapshot taken when it was assigned (D38).
+    - Errors always have the shape `{ "error": { "code": "...", "message": "..." } }`, plus extra
+      fields where noted. Codes map to the model tier's typed errors (see the report, docs/api-report.md).
+    - Candidate endpoints are authenticated only by the unguessable token in the path.
+      `GET` never changes data (D13). Unknown tokens always get the same generic 404 (D20).
+    - Admin endpoints require the `admin_session` cookie (HttpOnly, Secure, SameSite=Lax) set by
+      `POST /api/admin/login`. A missing or invalid cookie gives `401 UNAUTHENTICATED`.
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: https://{project}.vercel.app
+    description: Production
+    variables:
+      project:
+        default: your-project
+tags:
+  - name: Candidate
+    description: Called from the emailed link. The token in the path is the credential.
+  - name: Admin auth
+  - name: Admin event
+  - name: Admin candidates
+  - name: Admin availability
+  - name: Admin assignments
+
+paths:
+  /api/c/{token}:
+    parameters:
+      - $ref: '#/components/parameters/Token'
+    get:
+      tags: [Candidate]
+      operationId: getCandidateView
+      security: []
+      summary: Load the candidate page data
+      description: >
+        Returns the event, the candidate's saved windows, password state and assignment.
+        Does not require the password (D24). No side effects.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CandidateView' }
+        '404':
+          $ref: '#/components/responses/InvalidToken'
+    put:
+      tags: [Candidate]
+      operationId: saveAvailability
+      security: []
+      summary: Save (replace) the candidate's availability
+      description: |
+        Replaces the candidate's full set of windows in one transaction and sets `submittedAt`.
+        The server normalizes the windows (sorts, merges overlapping or touching ones) and returns
+        the saved result. An empty `windows` array means "not free at any time".
+
+        Password rules (FR-21 to FR-28):
+        - If the candidate already has a password, `password` is required and must match.
+        - If the candidate has no password and `canSetPassword` is true (first save, or after an admin reset),
+          a supplied `password` (1-128 chars, any content) is hashed and stored.
+        - If `canSetPassword` is false and the candidate has no password, a supplied `password` is ignored
+          and the response has `passwordProtected: false`.
+        - A password can never be changed or removed through this API.
+
+        Window rules: `startMinute < endMinute`, both multiples of 30, within 480-1200, and `day` must be
+        one of the event's dates. Windows on the same day may overlap in the request (they are merged).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveAvailabilityRequest' }
+            example:
+              windows:
+                - { day: '2026-11-16', startMinute: 480, endMinute: 540 }
+                - { day: '2026-11-16', startMinute: 720, endMinute: 840 }
+                - { day: '2026-11-16', startMinute: 1140, endMinute: 1200 }
+                - { day: '2026-11-17', startMinute: 600, endMinute: 720 }
+              password: 'any password works'
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaveAvailabilityResponse' }
+        '400':
+          description: >
+            `INVALID_WINDOWS` (includes `issues`) or `INVALID_PASSWORD` (empty or longer than 128 characters).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      issues:
+                        type: array
+                        items: { $ref: '#/components/schemas/WindowIssue' }
+        '401':
+          description: Password missing (`PASSWORD_REQUIRED`) or wrong (`PASSWORD_INCORRECT`). Nothing was saved.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      attemptsRemaining: { type: integer, minimum: 0 }
+        '403':
+          description: Poll is closed (`POLL_CLOSED`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          $ref: '#/components/responses/InvalidToken'
+        '423':
+          description: Too many wrong passwords (`LOCKED`). Retry after `lockedUntil`.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    required: [lockedUntil]
+                    properties:
+                      lockedUntil: { type: string, format: date-time }
+
+  /api/admin/login:
+    post:
+      tags: [Admin auth]
+      operationId: adminLogin
+      summary: Log in as admin
+      description: Compares against the `ADMIN_PASSWORD` env var in constant time and sets the `admin_session` cookie.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+      responses:
+        '204':
+          description: 'Logged in. The response sets the `admin_session` cookie.'
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+        '401':
+          description: Wrong password (`INVALID_CREDENTIALS`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/logout:
+    post:
+      tags: [Admin auth]
+      operationId: adminLogout
+      summary: Log out (clears the cookie)
+      responses:
+        '204':
+          description: Logged out
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /api/admin/event:
+    get:
+      tags: [Admin event]
+      operationId: getEvent
+      summary: Get the event configuration
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventConfig' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    put:
+      tags: [Admin event]
+      operationId: updateEvent
+      summary: Update the event configuration
+      description: |
+        Edits name, selectable days, interview length and the closed flag.
+        The day window (480-1200), the 30-minute grid and the timezone (America/New_York, D48)
+        are constants and not editable.
+
+        - If removing days would discard saved windows or assignments, the server returns
+          `409 DATES_HAVE_RESPONSES` with the counts, unless `confirmDiscard` is true (FR-2).
+        - Changing `interviewMinutes` does not move existing assignments (D38); only new ones use it.
+        - `closed: true` makes candidate links read-only (FR-3).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateEventRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventConfig' }
+        '400':
+          description: Invalid name, days or interview length (`INVALID_EVENT`). More than 14 days is invalid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '409':
+          description: Removed days have saved data and `confirmDiscard` was not set (`DATES_HAVE_RESPONSES`).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      removedDays: { type: array, items: { type: string, format: date } }
+                      affectedWindows: { type: integer, minimum: 0 }
+                      affectedAssignments: { type: integer, minimum: 0 }
+
+  /api/admin/candidates:
+    get:
+      tags: [Admin candidates]
+      operationId: listCandidates
+      summary: List candidates with status
+      description: >
+        Returns the token so the UI can build `{origin}/c/{token}` for the "Copy link" button.
+        Each candidate includes their assignment, so the dashboard schedule view needs no other call.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [candidates]
+                properties:
+                  candidates:
+                    type: array
+                    items: { $ref: '#/components/schemas/CandidateSummary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Admin candidates]
+      operationId: addCandidates
+      summary: Add candidates by email
+      description: >
+        Emails are trimmed and lower-cased. Duplicates (already present or repeated in the request)
+        and invalid addresses are reported, not errors. Each new candidate gets a 192-bit token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emails]
+              properties:
+                emails:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items: { type: string }
+            example:
+              emails: ['ada@example.edu', 'grace@example.edu']
+      responses:
+        '201':
+          description: Processed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [created, duplicates, invalid]
+                properties:
+                  created:
+                    type: array
+                    items: { $ref: '#/components/schemas/CandidateSummary' }
+                  duplicates:
+                    type: array
+                    items: { type: string }
+                  invalid:
+                    type: array
+                    items: { type: string }
+        '400':
+          description: Body malformed (`INVALID_REQUEST`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /api/admin/candidates/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CandidateId'
+    delete:
+      tags: [Admin candidates]
+      operationId: deleteCandidate
+      summary: Delete a candidate (cascades windows and assignment)
+      responses:
+        '204':
+          description: Deleted
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/admin/candidates/{id}/regenerate-token:
+    parameters:
+      - $ref: '#/components/parameters/CandidateId'
+    post:
+      tags: [Admin candidates]
+      operationId: regenerateToken
+      summary: Issue a new token (the old link stops working)
+      responses:
+        '200':
+          description: New token
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token]
+                properties:
+                  token: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/admin/candidates/{id}/reset-password:
+    parameters:
+      - $ref: '#/components/parameters/CandidateId'
+    post:
+      tags: [Admin candidates]
+      operationId: resetCandidatePassword
+      summary: Clear a candidate's password (FR-29)
+      description: >
+        Sets `password_hash` to null, `password_final` to false, and clears the lockout.
+        Windows and assignment are kept. The candidate can set a new password on their next save.
+      responses:
+        '204':
+          description: Reset
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/admin/availability:
+    get:
+      tags: [Admin availability]
+      operationId: getAggregateAvailability
+      summary: Everyone's availability at once (heatmap data)
+      description: >
+        Windows are expanded to 30-minute slots. One entry per slot that at least one candidate's
+        windows cover; slots no one covers are omitted. The count is `candidateIds.length`.
+        Highlighting one candidate is done client-side by filtering on `candidateIds`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slots]
+                properties:
+                  slots:
+                    type: array
+                    items: { $ref: '#/components/schemas/AggregateSlot' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /api/admin/assignments/{candidateId}:
+    parameters:
+      - name: candidateId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [Admin assignments]
+      operationId: assignInterview
+      summary: Assign (or move) a candidate's interview
+      description: |
+        Upserts the candidate's single assignment. The server sets `endMinute` to
+        `startMinute + event.interviewMinutes`.
+
+        - `400 INVALID_WINDOW` if the day is not an event day, `startMinute` is not a multiple of 30,
+          or the interview would end after 8:00 PM.
+        - `409 NOT_AVAILABLE` if the whole interview does not fit inside one of the candidate's windows,
+          unless `override` is true (FR-19).
+        - `409 SLOT_TAKEN` if the interview overlaps another candidate's on that day. Enforced by a
+          database exclusion constraint (D39), so it is safe under concurrency.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignRequest' }
+            example:
+              day: '2026-11-16'
+              startMinute: 720
+              override: false
+      responses:
+        '200':
+          description: Assigned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assignment' }
+        '400':
+          description: Invalid day or start time (`INVALID_WINDOW`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`SLOT_TAKEN` (includes `takenBy`, the other candidate''s email) or `NOT_AVAILABLE`.'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      takenBy: { type: string, format: email }
+    delete:
+      tags: [Admin assignments]
+      operationId: unassignInterview
+      summary: Remove a candidate's assignment
+      responses:
+        '204':
+          description: Unassigned (also returned if there was none)
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    adminSession:
+      type: apiKey
+      in: cookie
+      name: admin_session
+  parameters:
+    Token:
+      name: token
+      in: path
+      required: true
+      description: 192-bit random token, base64url (32 characters).
+      schema: { type: string, minLength: 32, maxLength: 64, pattern: '^[A-Za-z0-9_-]+$' }
+    CandidateId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    InvalidToken:
+      description: Unknown or invalid token (`INVALID_LINK`). Deliberately generic (D20).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthenticated:
+      description: Missing or invalid admin session (`UNAUTHENTICATED`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Candidate not found (`NOT_FOUND`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, examples: [PASSWORD_INCORRECT] }
+            message: { type: string }
+
+    Day:
+      type: string
+      format: date
+      description: Local calendar day in the event timezone, `YYYY-MM-DD`.
+
+    Minute:
+      type: integer
+      minimum: 0
+      maximum: 1440
+      multipleOf: 30
+      description: Minutes after local midnight. 480 is 8:00 AM, 1200 is 8:00 PM.
+
+    AvailabilityWindow:
+      type: object
+      description: One free stretch on one day. `endMinute` is exclusive.
+      required: [day, startMinute, endMinute]
+      properties:
+        day: { $ref: '#/components/schemas/Day' }
+        startMinute: { $ref: '#/components/schemas/Minute' }
+        endMinute: { $ref: '#/components/schemas/Minute' }
+
+    WindowIssue:
+      type: object
+      required: [index, reason]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: Position of the offending window in the request array.
+        reason:
+          type: string
+          enum: [BAD_EDGE, OUT_OF_HOURS, EMPTY_RANGE, DAY_NOT_IN_EVENT]
+
+    EventConfig:
+      type: object
+      required: [name, timezone, closed, interviewMinutes, dates, dayStartMinute, dayEndMinute, slotMinutes]
+      properties:
+        name: { type: string, maxLength: 120 }
+        timezone: { type: string, const: America/New_York, readOnly: true, description: 'Fixed; display only (D48).' }
+        closed: { type: boolean }
+        interviewMinutes:
+          type: integer
+          minimum: 30
+          maximum: 180
+          multipleOf: 30
+          description: Length of each interview, set by the admin.
+        dates:
+          type: array
+          maxItems: 14
+          items: { $ref: '#/components/schemas/Day' }
+          description: Selectable days, sorted ascending.
+        dayStartMinute: { type: integer, const: 480 }
+        dayEndMinute: { type: integer, const: 1200 }
+        slotMinutes: { type: integer, const: 30 }
+
+    UpdateEventRequest:
+      type: object
+      required: [name, closed, interviewMinutes, dates]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        closed: { type: boolean }
+        interviewMinutes:
+          type: integer
+          minimum: 30
+          maximum: 180
+          multipleOf: 30
+        dates:
+          type: array
+          maxItems: 14
+          items: { $ref: '#/components/schemas/Day' }
+        confirmDiscard:
+          type: boolean
+          default: false
+
+    AssignRequest:
+      type: object
+      required: [day, startMinute]
+      properties:
+        day: { $ref: '#/components/schemas/Day' }
+        startMinute: { $ref: '#/components/schemas/Minute' }
+        override:
+          type: boolean
+          default: false
+
+    Assignment:
+      type: object
+      required: [candidateId, day, startMinute, endMinute, override]
+      properties:
+        candidateId: { type: string, format: uuid }
+        day: { $ref: '#/components/schemas/Day' }
+        startMinute: { $ref: '#/components/schemas/Minute' }
+        endMinute: { $ref: '#/components/schemas/Minute' }
+        override:
+          type: boolean
+          description: True if the candidate was not free for the whole interview.
+
+    AssignmentPublic:
+      type: object
+      description: What a candidate sees (no internal flags).
+      required: [day, startMinute, endMinute]
+      properties:
+        day: { $ref: '#/components/schemas/Day' }
+        startMinute: { $ref: '#/components/schemas/Minute' }
+        endMinute: { $ref: '#/components/schemas/Minute' }
+
+    AggregateSlot:
+      type: object
+      required: [day, startMinute, candidateIds]
+      properties:
+        day: { $ref: '#/components/schemas/Day' }
+        startMinute: { $ref: '#/components/schemas/Minute' }
+        candidateIds:
+          type: array
+          items: { type: string, format: uuid }
+
+    CandidateView:
+      type: object
+      required: [email, event, windows, submittedAt, passwordProtected, canSetPassword, lockedUntil, assignment]
+      properties:
+        email: { type: string, format: email }
+        event: { $ref: '#/components/schemas/EventConfig' }
+        windows:
+          type: array
+          items: { $ref: '#/components/schemas/AvailabilityWindow' }
+        submittedAt:
+          type: [string, 'null']
+          format: date-time
+        passwordProtected:
+          type: boolean
+          description: A password is required to save.
+        canSetPassword:
+          type: boolean
+          description: True only before the first save, and after an admin reset.
+        lockedUntil:
+          type: [string, 'null']
+          format: date-time
+        assignment:
+          oneOf:
+            - $ref: '#/components/schemas/AssignmentPublic'
+            - type: 'null'
+
+    SaveAvailabilityRequest:
+      type: object
+      required: [windows]
+      properties:
+        windows:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/AvailabilityWindow' }
+          description: Full replacement set. After merging there are at most 12 windows per day.
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+
+    SaveAvailabilityResponse:
+      type: object
+      required: [submittedAt, passwordProtected, windows]
+      properties:
+        submittedAt: { type: string, format: date-time }
+        passwordProtected: { type: boolean }
+        windows:
+          type: array
+          items: { $ref: '#/components/schemas/AvailabilityWindow' }
+          description: The normalized windows as stored.
+
+    CandidateStatus:
+      type: string
+      enum: [invited, submitted, scheduled]
+
+    CandidateSummary:
+      type: object
+      description: Safe for the admin UI. Never includes the password hash or lockout counters.
+      required: [id, email, token, status, submittedAt, passwordProtected, assignment]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        token: { type: string }
+        status: { $ref: '#/components/schemas/CandidateStatus' }
+        submittedAt:
+          type: [string, 'null']
+          format: date-time
+        passwordProtected: { type: boolean }
+        assignment:
+          oneOf:
+            - $ref: '#/components/schemas/Assignment'
+            - type: 'null'
+
+security:
+  - adminSession: []
