@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash .claude/scripts/log-message.sh:*)"
+    ]
+  },
+  "agent": "pm"
+}
