@@ -7,7 +7,8 @@
 #   FROM, TO  a role name or its code; the log always shows the code:
 #             project-manager=PMAN  architect=ARCH  security-expert=CSEC  developer-1=DEV1  developer-2=DEV2
 #             tester-1=TES1  tester-2=TES2  reviewer=REVW  docs-master=DOCM
-#             (anything else, such as "user", is written as given)
+#             user=OSCR (the owner; only PMAN writes to OSCR)
+#             (anything else is written as given)
 #   TYPE      hello | brief | question | answer | concern | objection | agree | escalation | report | decision
 #   TEXT      the message, or a faithful short version of it
 # Line format: YYYY-MM-DD HH:MM:SS | FROM -> TO | TYPE | TEXT
@@ -30,6 +31,7 @@ code() {
     tester-2|tes2)                  echo "TES2" ;;
     reviewer|revw)                  echo "REVW" ;;
     docs-master|doc|docs|docm)      echo "DOCM" ;;
+    user|oscar|oscr)                echo "OSCR" ;;
     *)                              echo "$1" ;;
   esac
 }
