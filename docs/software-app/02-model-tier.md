@@ -1,6 +1,6 @@
 # Model tier: how the tables live in the Next.js app
 
-Status: **Authoritative** together with [erd.md](erd.md) and [openapi.yaml](openapi.yaml) (D51). Decisions: D37-D41 and D50-D54 in [decisions.md](decisions.md).
+Status: **Authoritative** together with [01-erd.md](01-erd.md) and [03-openapi.yaml](03-openapi.yaml) (D51). Decisions: D37-D41 and D50-D54 in [04-decisions.md](04-decisions.md).
 
 ## 1. Scope
 

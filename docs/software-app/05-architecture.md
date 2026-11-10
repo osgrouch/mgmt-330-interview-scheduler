@@ -1,6 +1,6 @@
 # Architecture: MGMT 330 Interview Scheduler
 
-Status: derived from the authoritative docs ([erd.md](erd.md), [model-tier.md](model-tier.md), [openapi.yaml](openapi.yaml)) and may lag behind them. If they disagree with this file, they win.
+Status: derived from the authoritative docs ([01-erd.md](01-erd.md), [02-model-tier.md](02-model-tier.md), [03-openapi.yaml](03-openapi.yaml)) and may lag behind them. If they disagree with this file, they win.
 Docs index: [README.md](../README.md). Diagrams are Mermaid (GitHub renders them, or use a Mermaid preview extension in VS Code).
 
 ## 1. System context
@@ -41,8 +41,8 @@ flowchart TB
     end
 
     subgraph APITIER["API tier, server-only"]
-        ROUTES["Route Handlers<br/>14 operations in openapi.yaml"]
-        AUTH["Auth module<br/>session cookie, scrypt, lockout policy<br/>file not yet named in model-tier.md"]
+        ROUTES["Route Handlers<br/>14 operations in 03-openapi.yaml"]
+        AUTH["Auth module<br/>session cookie, scrypt, lockout policy<br/>file not yet named in 02-model-tier.md"]
     end
 
     subgraph MODELTIER["Model tier, server-only"]
@@ -241,11 +241,11 @@ A reset also clears `failed_attempts` and `locked_until`. Viewing the link never
 
 ## 8. Data model
 
-The data model lives in [erd.md](erd.md) (EVENT, EVENT_DATE, CANDIDATE, AVAILABILITY_WINDOW, ASSIGNMENT); it is deliberately not redrawn here.
+The data model lives in [01-erd.md](01-erd.md) (EVENT, EVENT_DATE, CANDIDATE, AVAILABILITY_WINDOW, ASSIGNMENT); it is deliberately not redrawn here.
 
 ## 9. Key decisions
 
-Full log with status and cost-if-wrong: [decisions.md](decisions.md).
+Full log with status and cost-if-wrong: [04-decisions.md](04-decisions.md).
 
 | Decision | Choice | Reason |
 |----------|--------|--------|

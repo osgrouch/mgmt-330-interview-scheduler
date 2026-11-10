@@ -3,7 +3,7 @@ info:
   title: MGMT 330 Interview Scheduler API
   version: 0.2.0-draft
   description: |
-    Contract for the Next.js Route Handlers. Follows erd.md and model-tier.md.
+    Contract for the Next.js Route Handlers. Follows 01-erd.md and 02-model-tier.md.
     If code needs a route or field that is not here, change this file first (decision D32).
 
     Conventions
@@ -18,7 +18,7 @@ info:
     - An interview lasts `event.interviewMinutes` (a multiple of 30, set by the admin). An assignment
       stores its own `endMinute`, a snapshot taken when it was assigned (D38).
     - Errors always have the shape `{ "error": { "code": "...", "message": "..." } }`, plus extra
-      fields where noted. Codes map to the model tier's typed errors (see the report, docs/api-report.md).
+      fields where noted. Codes map to the model tier's typed errors.
     - Candidate endpoints are authenticated only by the unguessable token in the path.
       `GET` never changes data (D13). Unknown tokens always get the same generic 404 (D20).
     - Admin endpoints require the `admin_session` cookie (HttpOnly, Secure, SameSite=Lax) set by

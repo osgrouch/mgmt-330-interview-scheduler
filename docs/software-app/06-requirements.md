@@ -1,6 +1,6 @@
 # Requirements: MGMT 330 Interview Scheduler
 
-Status: **Reconciled with the ERD, model tier and API spec.** For the data model and API, the authoritative documents are [erd.md](erd.md), [model-tier.md](model-tier.md) and [openapi.yaml](openapi.yaml); this document may lag behind them (D51).
+Status: **Reconciled with the ERD, model tier and API spec.** For the data model and API, the authoritative documents are [01-erd.md](01-erd.md), [02-model-tier.md](02-model-tier.md) and [03-openapi.yaml](03-openapi.yaml); this document may lag behind them (D51).
 
 **Scope of this deliverable:** the page and endpoint where an interviewee submits their availability, plus the admin view that shows who has responded, shows everyone's availability together, and assigns interview times. Logins for interviewers (the admin's teammates) are a future release (D1).
 
@@ -8,7 +8,7 @@ Status: **Reconciled with the ERD, model tier and API spec.** For the data model
 
 The admin (coordinator) creates an availability poll for a set of candidates. Each candidate gets a unique, unguessable link and, with no sign-in, marks when they are free as **windows** (one or more per day, different on each day) between 8 AM and 8 PM, on a When2meet-style grid with 30-minute cells. The admin sees who has responded, views everyone's availability on one heatmap, and assigns each candidate an interview time. The admin sends the links to candidates themselves (the app does not send email).
 
-## 2. Settled assumptions (all confirmed by the user; details in [decisions.md](decisions.md))
+## 2. Settled assumptions (all confirmed by the user; details in [04-decisions.md](04-decisions.md))
 
 | # | Assumption | Decision |
 |---|-----------|----------|
@@ -21,6 +21,8 @@ The admin (coordinator) creates an availability poll for a set of candidates. Ea
 | A7 | Once assigned, the candidate's link **shows their interview time**. | D7 |
 | A8 | **Database: Neon Postgres** (Vercel Marketplace). SQLite and local files don't persist on Vercel. | D8 |
 | A9 | **Admin auth: single shared password** from an env var, stored in a signed HttpOnly cookie. | D9 |
+
+**Build phasing (D58).** The MVP is everything above **except** the candidate password block (UR-11 to UR-13, FR-21 to FR-29), token regeneration (FR-6, regenerate part) and drag-select and the override-assign warning in the UI (FR-9 drag part, FR-19 UI). Those are built right after the MVP, in that order; drag-select and the override warning are cut first if time runs short.
 
 ## 3. User requirements
 
@@ -88,7 +90,7 @@ The admin (coordinator) creates an availability poll for a set of candidates. Ea
 - FR-25: If a password exists, every later save must include it. A wrong or missing password returns 401 and saves no availability data.
 - FR-26: Opening and viewing the link does not require the password. The page shows a lock indicator and asks for the password when the candidate saves.
 - FR-27: A candidate who saved without a password cannot add one later.
-- FR-28: After 5 consecutive wrong passwords, saves for that candidate are locked for 15 minutes (a correct password resets the counter). A missing password is not a guess and does not count (D52).
+- FR-28: After 5 consecutive wrong passwords, saves for that candidate are locked for 15 minutes (a correct password resets the counter). The 5th wrong attempt returns 401; later attempts return 423, and a correct password is refused while locked. When the lock expires the counter restarts. A missing password is not a guess and does not count (D52, D59).
 - FR-29: The admin candidate table shows a lock icon for protected candidates, and an admin-only "Reset password" action clears the password and lets the candidate set one again on their next save. Availability is kept.
 
 ## 5. Non-functional requirements
@@ -105,7 +107,7 @@ The admin (coordinator) creates an availability poll for a set of candidates. Ea
 | NFR-8 | Usability | Grid works with touch and mouse; responsive down to 360 px width. |
 | NFR-9 | Reliability | Saves are transactional (all-or-nothing). Server validates every submitted window is on an event day, has 30-minute edges, and lies inside 8:00-20:00. |
 | NFR-10 | Deployability | One Vercel project; secrets via env vars (`DATABASE_URL`, `ADMIN_PASSWORD`, `SESSION_SECRET`). Zero manual DB steps beyond running a migration script. |
-| NFR-11 | Maintainability | TypeScript strict; single SQL schema file; module layout as in [model-tier.md](model-tier.md) section 11. |
+| NFR-11 | Maintainability | TypeScript strict; single SQL schema file; module layout as in [02-model-tier.md](02-model-tier.md) section 11. |
 | NFR-12 | Accessibility | Grid cells are keyboard-toggleable with labels (e.g. "Tue Nov 17, 2:00 PM, available"). |
 | NFR-13 | Out of scope | OAuth, calendar sync, email sending, multi-event, interviewer logins (planned for a future release), i18n, candidate-initiated password change or recovery. |
 | NFR-14 | Security | Passwords hashed with scrypt (Node `crypto`, per-candidate random salt), verified with `timingSafeEqual`. Passwords never logged or returned. Hashing cost kept low enough for Vercel serverless (under ~100 ms). |

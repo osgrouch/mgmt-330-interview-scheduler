@@ -1,7 +1,7 @@
 # ERD: data model
 
 Status: **APPROVED by the user**, with interview length made configurable (see below).
-**Authoritative** together with [model-tier.md](model-tier.md) and [openapi.yaml](openapi.yaml) (D51). Other docs may lag behind.
+**Authoritative** together with [02-model-tier.md](02-model-tier.md) and [03-openapi.yaml](03-openapi.yaml) (D51). Other docs may lag behind.
 
 ## Diagram
 

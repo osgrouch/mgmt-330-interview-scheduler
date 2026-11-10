@@ -1,6 +1,6 @@
 # Dev team: roles, rules and workflow
 
-Every team agent reads this file first. The agent definitions live in [.claude/agents/](../.claude/agents/). This file is the shared protocol; if an agent definition and this file disagree, this file wins.
+Every team agent reads this file first. The agent definitions live in [.claude/agents/](../../.claude/agents/). This file is the shared protocol; if an agent definition and this file disagree, this file wins.
 
 ## 1. How the team works
 
@@ -14,23 +14,23 @@ Every team agent reads this file first. The agent definitions live in [.claude/a
 
 | Code | Role | Agent name | Owns | Must not edit |
 |------|------|-----------|------|---------------|
-| PMAN | Project manager | `project-manager` | `docs/status.md`, `docs/requirements.md`; records your decisions in `docs/decisions.md` | code, tests, design docs |
-| ARCH | Architect | `architect` | `docs/erd.md`, `docs/model-tier.md`, `docs/openapi.yaml`, `docs/architecture.md`, and the work agreements in `docs/agreements/`; records design decisions in `docs/decisions.md` | code, tests |
-| CSEC | Cybersecurity expert | `security-expert` | `docs/security.md` | code, tests, other docs |
+| PMAN | Project manager | `project-manager` | `docs/claude-use/02-status.md`, `docs/software-app/06-requirements.md`; records your decisions in `docs/software-app/04-decisions.md` (app) and `docs/claude-use/01-decisions.md` (team) | code, tests, design docs |
+| ARCH | Architect | `architect` | `docs/software-app/01-erd.md`, `docs/software-app/02-model-tier.md`, `docs/software-app/03-openapi.yaml`, `docs/software-app/05-architecture.md`, and the work agreements in `docs/claude-use/dev-agreements/`; records design decisions in `docs/software-app/04-decisions.md` and keeps the architectural decisions log `docs/claude-use/05-architectural-decisions.md` | code, tests |
+| CSEC | Cybersecurity expert | `security-expert` | `docs/claude-use/03-security.md` | code, tests, other docs |
 | DEV1 | Developer 1 | `developer-1` | the application files the work agreement assigns to DEV1: `app/`, `components/`, `lib/`, `db/`, `scripts/`, build config; also owns `package.json` and the lockfile | tests, docs (except appending a sign-off block to a work agreement) |
 | DEV2 | Developer 2 | `developer-2` | the application files the work agreement assigns to DEV2 (same areas as DEV1) | tests, docs (except a sign-off block), files assigned to DEV1 |
 | TES1 | Tester 1 | `tester-1` | tests for DEV1's modules: `*.test.ts` files, test config, fixtures and helpers the agreement assigns to TES1 | application code, docs (except a sign-off block) |
 | TES2 | Tester 2 | `tester-2` | tests for DEV2's modules, the same way | application code, docs (except a sign-off block), files assigned to TES1 |
 | REVW | Reviewer | `reviewer` | formatting, lint, type and build checks; the Prettier, ESLint and EditorConfig files; drafting your commit messages | features, tests' logic, docs, git history (never commits) |
-| DOCM | Documentation master | `docs-master` | `docs/drift-log.md`, the docs index in `README.md` | code, tests, other docs |
+| DOCM | Documentation master | `docs-master` | `docs/claude-use/04-drift-log.md`, the docs index tables in `README.md` and `docs/README.md` | code, tests, other docs |
 
 DEV1 and DEV2 have identical instructions; so do TES1 and TES2. They are teammates. The four builders may work together at any time to coordinate and communicate.
 
-`docs/decisions.md` is append-only for PMAN and ARCH: take the next free ID, never renumber, never edit another role's row except to correct its status.
+`docs/software-app/04-decisions.md` (the app) and `docs/claude-use/01-decisions.md` (how the team works) are append-only for PMAN and ARCH. They share one ID sequence: take the next free ID across both, never renumber, never edit another role's row except to correct its status. App decisions go in `04-decisions.md`; decisions about roles, workflow, commits and what reaches the user go in `01-decisions.md`.
 
 ## 3. Ground rules (all roles)
 
-1. **Authoritative documents**, in order: `docs/erd.md`, `docs/model-tier.md`, `docs/openapi.yaml`. Other docs may lag. Code follows the authoritative documents. If code needs something they do not say, ARCH updates them **first**, then the code changes.
+1. **Authoritative documents**, in order: `docs/software-app/01-erd.md`, `docs/software-app/02-model-tier.md`, `docs/software-app/03-openapi.yaml`. Other docs may lag. Code follows the authoritative documents. If code needs something they do not say, ARCH updates them **first**, then the code changes.
 2. **No tests or code before the work agreement is signed off** by every developer and tester it names (section 4).
 3. **Stay in your lane.** If you need something outside your files, ask the owner. Do not do it yourself. Two builders never edit the same file: the work agreement gives each file one owner.
 4. **Do not ask the user directly.** Only PMAN talks to the user. Put questions that need the user in your report under "Needs a decision" with options and a recommended default.
@@ -77,7 +77,7 @@ flowchart TB
 ```
 
 1. **PMAN** turns your request into a task brief: goal, the requirement IDs and API operations involved, acceptance criteria, whether TDD applies, and the order of roles.
-2. **ARCH drafts a work agreement** (`docs/agreements/<task-slug>.md`, one page): scope; exact module and function signatures (names, arguments, return types, thrown errors) taken from the authoritative documents; behavior for normal and edge cases with requirement and decision IDs; **which modules and files DEV1 builds and which DEV2 builds**, so they can work independently; the interfaces where their modules meet; the integration step; which tests TES1 and TES2 write; what is out of scope. If the design docs do not cover the task, ARCH updates them first.
+2. **ARCH drafts a work agreement** (`docs/claude-use/dev-agreements/<task-slug>.md`, one page): scope; exact module and function signatures (names, arguments, return types, thrown errors) taken from the authoritative documents; behavior for normal and edge cases with requirement and decision IDs; **which modules and files DEV1 builds and which DEV2 builds**, so they can work independently; the interfaces where their modules meet; the integration step; which tests TES1 and TES2 write; what is out of scope. If the design docs do not cover the task, ARCH updates them first.
 3. **The developers and testers it names each review the agreement** and append a sign-off block: "Agree", or numbered objections. ARCH resolves objections by clarifying or amending the agreement and the design docs, then asks them to confirm again. The work counts as agreed only when **all** have signed off.
 4. **CSEC** reviews the design for the task and lists requirements the code must meet.
 5. **TES1 and TES2** write failing tests for their developer's modules and post a behavior contract (section 5).
@@ -160,18 +160,20 @@ Severity scale for security findings and drift findings: **Blocking** (must be f
 
 | File | Owner | Purpose |
 |------|-------|---------|
-| `docs/status.md` | PMAN | Current phase, per-role status, blockers, decisions waiting on you, the roster of agent ids |
-| `docs/agreements/<task>.md` | ARCH (developers and testers append sign-offs) | The agreed scope, module split, signatures and behavior for one task |
-| `docs/security.md` | CSEC | Security checklist for this app and a log of findings |
-| `docs/drift-log.md` | DOCM | Dated drift reports and their resolution status |
-| `docs/decisions.md` | PMAN and ARCH | Decision log, questions, risks |
+| `docs/claude-use/02-status.md` | PMAN | Current phase, per-role status, blockers, decisions waiting on you, the roster of agent ids |
+| `docs/claude-use/dev-agreements/<task>.md` | ARCH (developers and testers append sign-offs) | The agreed scope, module split, signatures and behavior for one task |
+| `docs/claude-use/03-security.md` | CSEC | Security checklist for this app and a log of findings |
+| `docs/claude-use/04-drift-log.md` | DOCM | Dated drift reports and their resolution status |
+| `docs/claude-use/05-architectural-decisions.md` | ARCH | The architecture choices, with reasons and alternatives |
+| `docs/software-app/04-decisions.md` | PMAN and ARCH | Decisions about the app: decision log, questions, risks |
+| `docs/claude-use/01-decisions.md` | PMAN | Decisions about how the team works |
 | `.claude/logs/messages.log` | Every agent appends (via the log script) | Who said what to whom, and when |
 
 ## 9. Communication between agents
 
-Agents message each other directly with `SendMessage`. In every message, log line and report they refer to each other **by code only** (below). `SendMessage` itself needs the recipient's agent id, because role names do not resolve as addresses. PMAN gives each agent a roster (code to agent id) when it starts or resumes it, and keeps the roster in `docs/status.md`. A message to an agent that has finished wakes it up again with the same id, so resume agents rather than starting new ones. Begin each message with the sender and recipient codes, for example `ARCH -> DEV1:`.
+Agents message each other directly with `SendMessage`. In every message, log line and report they refer to each other **by code only** (below). `SendMessage` itself needs the recipient's agent id, because role names do not resolve as addresses. PMAN gives each agent a roster (code to agent id) when it starts or resumes it, and keeps the roster in `docs/claude-use/02-status.md`. A message to an agent that has finished wakes it up again with the same id, so resume agents rather than starting new ones. Begin each message with the sender and recipient codes, for example `ARCH -> DEV1:`.
 
-**Log codes:** `PMAN` = project-manager, `ARCH` = architect, `CSEC` = security-expert, `DEV1` = developer-1, `DEV2` = developer-2, `TES1` = tester-1, `TES2` = tester-2, `REVW` = reviewer, `DOCM` = docs-master. The log script accepts either the role name or the code and always writes the code, so the log reads like `PMAN  -> ARCH | brief | ...`.
+**Log codes:** `PMAN` = project-manager, `ARCH` = architect, `CSEC` = security-expert, `DEV1` = developer-1, `DEV2` = developer-2, `TES1` = tester-1, `TES2` = tester-2, `REVW` = reviewer, `DOCM` = docs-master, `OSCR` = you, the owner. Only PMAN writes to OSCR. The log script accepts either the role name or the code and always writes the code, so the log reads like `PMAN  -> ARCH | brief | ...`.
 
 **Who talks to whom**
 
@@ -190,7 +192,7 @@ Agents message each other directly with `SendMessage`. In every message, log lin
 
 1. **Log first.** Before every `SendMessage`, run `bash .claude/scripts/log-message.sh <from> <to> <type> "<text>"` with the same text, so the log shows what was said, to whom, and when. Types: `hello`, `brief`, `question`, `answer`, `concern`, `objection`, `agree`, `escalation`, `report`, `decision`.
 2. **One exchange, then ARCH.** Raise the concern with the right role; they answer (fix it, explain, or disagree with a reason). If you still disagree after that one exchange, the person who raised it sends ARCH both positions and a recommendation.
-3. **ARCH decides, and the decision is final.** ARCH tells the people involved the decision and why, in a few lines, and records it in `docs/decisions.md` when it sets a rule others will need. Nobody escalates past ARCH for a technical disagreement. **The user is not told about these disagreements** (D67).
+3. **ARCH decides, and the decision is final.** ARCH tells the people involved the decision and why, in a few lines, and records it in `docs/software-app/04-decisions.md` when it sets a rule others will need. Nobody escalates past ARCH for a technical disagreement. **The user is not told about these disagreements** (D67).
 4. **What still goes to the user, through PMAN.** This is the user's decision (D68): a change to scope or requirements; anything that costs money or creates cloud resources (D19); a commit (D65); and a Blocking finding from CSEC that ARCH wants to overrule. ARCH does not overrule CSEC alone: ARCH sends PMAN both positions and a recommendation. PMAN brings it to the user with options and a recommended default, and when the user decides tells the roles involved (logged as `decision`).
 5. **Present your work.** When you finish a task, send PMAN your report in the format in section 7 (logged as `report`). You own the quality of your own work.
 6. **Short messages.** Point to files and line numbers instead of pasting. One topic per message.

@@ -1,10 +1,12 @@
 # Decisions Log and Open Questions
 
-Companion to the other design docs. **Authoritative documents:** [erd.md](erd.md), [model-tier.md](model-tier.md) and [openapi.yaml](openapi.yaml), in that order (D51). The rest ([requirements.md](requirements.md), [architecture.md](architecture.md), [api-report.md](api-report.md), this log) may lag behind them. If code needs something the authoritative documents don't say, update them first.
+Companion to the other design docs. **Authoritative documents:** [01-erd.md](01-erd.md), [02-model-tier.md](02-model-tier.md) and [03-openapi.yaml](03-openapi.yaml), in that order (D51). The rest ([06-requirements.md](06-requirements.md), [05-architecture.md](05-architecture.md), this log) may lag behind them. If code needs something the authoritative documents don't say, update them first.
 
 Status key: **Confirmed** (the user has agreed; where Claude proposed it, the Source column says so) | **Process** (a working rule) | **Open** (needs an answer)
 
 All previously assumed decisions were confirmed by the user on 2026-11-09.
+
+This log holds decisions about **the app being built**. Decisions about how the agent team works (roles, workflow, who commits, what reaches the user) are in [01-decisions.md](../claude-use/01-decisions.md). Both files share one ID sequence: take the next free ID across the two, and IDs never change when a row moves. Team-environment rows that used to be here: D19, D55-D57, D64-D72, Q19, Q20.
 
 ## 1. Decision log
 
@@ -28,7 +30,6 @@ All previously assumed decisions were confirmed by the user on 2026-11-09.
 | D16 | n/a | Candidates can't see other candidates' availability or names. | **Confirmed** | Claude; confirmed | Low. |
 | D17 | n/a | Importing existing When2meet data is out of scope for now. The schema (email + availability windows of candidate, day, start, end) is import-friendly. | **Confirmed** | User ("I'll figure out how to extract that at a later step") | n/a |
 | D18 | n/a | No deadline, reminders or notifications in v1. | **Confirmed** | Claude; confirmed | Low. |
-| D19 | n/a | I will not deploy, push, or create cloud resources (Vercel/Neon) without an explicit go-ahead. | **Process** | Outward-facing actions | n/a |
 | D20 | n/a | Unknown or invalid tokens get one generic "link not valid" page. | **Confirmed** | Claude; confirmed | None. |
 | D21 | UR-11 | Candidate password is optional and chosen by the candidate. | **Confirmed** | User | n/a |
 | D22 | FR-22 | Any password is accepted on the first try (1-128 characters, no strength rules). | **Confirmed** | User | n/a |
@@ -41,7 +42,7 @@ All previously assumed decisions were confirmed by the user on 2026-11-09.
 | D29 | Architecture | The password is sent with each save (no session or cookie), so reloading the page means re-entering it. | **Confirmed** | Claude; confirmed | Low: add an unlock endpoint with a short-lived cookie. |
 | D30 | FR-21 | The first-time password field is typed twice (UI check only) with a "cannot be changed" warning. | **Confirmed** | Claude; confirmed | None. |
 | D31 | FR-7, FR-20 | No export feature (no CSV of links or schedule). The schedule is view-only. | **Confirmed** | User | None. |
-| D32 | API | API contract is [openapi.yaml](openapi.yaml). Routes in the code must match it; change the spec first. | **Process** | User | n/a |
+| D32 | API | API contract is [03-openapi.yaml](03-openapi.yaml). Routes in the code must match it; change the spec first. | **Process** | User | n/a |
 | D33 | ERD | Availability is stored as **windows** (candidate, day, start, end). A day can have any number of windows, and different days differ. | **Confirmed** | User ("varying slots of availability" per day) | n/a |
 | D34 | ERD | Times are stored as local day + minutes after midnight, not UTC timestamps. The event timezone is for display only. | **Confirmed** | Claude; confirmed | Low: only matters if timezones ever differ per person. |
 | D35 | ERD | Window edges are on 30-minute boundaries; overlapping or touching windows are merged on save rather than rejected. | **Confirmed** | User (30-minute edges); Claude (merge on save); confirmed | Low: loosen the multiple-of-30 check. |
@@ -60,13 +61,16 @@ All previously assumed decisions were confirmed by the user on 2026-11-09.
 | D48 | Event | The event timezone is fixed to America/New_York and never changes. It is not editable through the API or UI, and there is no relabeling or shifting logic. | **Confirmed** | User | n/a |
 | D49 | FR-7 | Candidate links are built in the admin UI from the page's own origin plus `/c/{token}`. There is no base-URL env var. | **Confirmed** | Claude (doc review); confirmed | None. |
 | D50 | API | Assigning an invalid time (day not in the event, start not a multiple of 30, or the interview would end after 8 PM) is a typed `InvalidWindowError(reason)` in the model tier and returns `400 INVALID_WINDOW`. (Renamed from the earlier "slot" wording.) Not to be confused with `INVALID_WINDOWS` (plural), which is for the save-availability request. | **Confirmed** | User | None. |
-| D51 | Process | The authoritative documents are erd.md, model-tier.md and openapi.yaml, in that order. Other docs may lag behind them. | **Process** | User | n/a |
+| D51 | Process | The authoritative documents are 01-erd.md, 02-model-tier.md and 03-openapi.yaml, in that order. Other docs may lag behind them. | **Process** | User | n/a |
 | D52 | Model tier | Lockout boundary: the auth module decides what counts as a failed attempt and when to lock; the repo only persists counters. Constants live in `lib/model/constants.ts`: `MAX_FAILED_ATTEMPTS = 5`, `LOCK_MINUTES = 15`, `MAX_PASSWORD_LENGTH = 128`. A **wrong** password counts as a failed attempt; a **missing** password does not. | **Confirmed** | Claude (doc review); confirmed, except "missing does not count", which is a new choice to check | Low. |
 | D53 | Process | The time plan was removed from the requirements. | **Confirmed** | User | n/a |
 | D54 | Model tier / API | The API builds its event object from the model tier's `EventConfig` plus the day constants (`dayStartMinute`, `dayEndMinute`, `slotMinutes`) and drops `id`. | **Confirmed** | Claude (doc review); confirmed | None. |
-| D55 | Process | The dev team is six subagents defined in `.claude/agents/`: PM, architect, security-expert, developer, tester, docs-master. The shared protocol is [team.md](team.md). The main session orchestrates; the PM is the user's point of contact. | **Confirmed** | User | n/a |
-| D56 | Process | Test-driven development for the important modules (pure window logic, mappers, auth module, repository functions, error mapping). The tester writes tests first; the developer never edits tests. The frontend is not tested by the team; the user tests it manually. | **Confirmed** | User | n/a |
-| D57 | Process | Code comment standard: a short TSDoc comment on every component, property, constant, function and argument, plus a `Why:` line citing decision IDs where a design decision shaped the code. Tests are commented the same way. Defined in team.md section 6. | **Confirmed** | User | n/a |
+| D58 | Scope | **MVP scope.** MVP = admin login, event settings (name, days, interview length, close/reopen), add/list/delete candidates with Copy link, the candidate availability grid (click-to-toggle, save, no password), the heatmap, assign/unassign, schedule view, and the assigned time on the candidate link. Built **right after the MVP**: candidate password, lockout and admin reset (FR-21 to FR-29), regenerate token, the `confirmDiscard` flow. Cut first if time runs short: drag-select, then the override-assign UI warning. The server-side `override` flag stays in the MVP. ARCH documents the phasing in the design docs before code. | **Confirmed** | User, on ARCH/DEV/DOCM proposals (2026-11-09) | Low. |
+| D59 | Model tier / API | **Lockout rules (Q16, D52).** The 5th wrong password returns 401 with `attemptsRemaining: 0`; later attempts return 423 while locked; a correct password during lockout is refused. After the lock expires the failed-attempt counter restarts. A successful save resets it. A **missing** password does not count as a failed attempt (D52 confirmed). | **Confirmed** | User (2026-11-09) | Low. |
+| D60 | Architecture | **Validation layer and file layout (Q17, Q18).** The route handler checks `closed`, runs `validateWindows`, validates event input and the basic request shape; the repo stays thin and DB constraints are the backstop. Add `lib/auth/password.ts`, `lib/auth/session.ts` and `lib/http/errors.ts` (typed error to HTTP mapping). **No `middleware.ts`:** a shared `requireAdmin()` helper is called at the top of every admin route handler and admin page. ARCH records these in 02-model-tier.md. | **Confirmed** | User, on ARCH/DEV/CSEC proposals (2026-11-09) | Low. |
+| D61 | Database | **Neon dev and test branches** for development and repository tests, using the same Neon driver as production. The user creates the Neon project and Vercel project and the team gives exact steps (Q9). `DATABASE_URL` and `DATABASE_URL_TEST` live in `.env.local`, never in files. Pure modules are built first and need no database. R9 (`btree_gist`) is verified at the first migration. D19 still applies: no cloud resource is created by an agent. | **Confirmed** | User, on ARCH/DEV proposal (2026-11-09) | Low-medium. |
+| D62 | Security | **Session and secrets.** Hand-written signed admin cookie (HMAC-SHA256 over an expiry, 7 days) using Node `crypto`; HttpOnly, SameSite=Lax, Secure except in local development. CSRF: SameSite=Lax plus JSON-only bodies. App-wide headers (Referrer-Policy no-referrer, noindex, nosniff, frame deny, no-store on API and candidate pages), no CSP. Fail closed if `ADMIN_PASSWORD` or `SESSION_SECRET` is missing or too short. The user generates both secrets and sets them for Production only in Vercel. | **Confirmed** | User, on CSEC proposal (2026-11-09) | Low. |
+| D63 | Stack | **Tech stack.** Runtime: next, react, react-dom, @neondatabase/serverless, server-only, zod. Dev: typescript, vitest, eslint, Tailwind v4 and the matching @types. Latest versions at scaffold time. Any other package needs CSEC review. | **Confirmed** | User (2026-11-09) | Low. |
 
 ## 2. Questions
 
@@ -74,10 +78,6 @@ All previously assumed decisions were confirmed by the user on 2026-11-09.
 
 | ID | Question | Default |
 |----|----------|---------|
-| Q9 | Do you already have Vercel and Neon accounts, and who provisions the database (you, or I guide you step by step)? | You provision; I give exact steps. |
-| Q16 | On the 5th wrong password, should that request itself return 401 (with `attemptsRemaining: 0`) and the lock apply from the next request (423)? And while locked, is a correct password also refused? Lockout is checked first, then a missing password, then a wrong one. (Gap in openapi.yaml; the architecture draws it this way.) | Yes to both: 401 on the 5th, 423 afterward, and a correct password during lockout is refused. |
-| Q17 | Which layer validates a save: should the route handler call `validateWindows` and check the poll's `closed` flag (via `getEvent`), keeping the repo thin? (Not stated in model-tier.md; the architecture draws it this way.) | Yes, the route handler does both. |
-| Q18 | The auth module (password hashing, lockout decisions, admin session) has no file names in model-tier.md section 11. Add `lib/auth/password.ts` and `lib/auth/session.ts`? | Yes, add those two files. |
 
 ### Resolved
 
@@ -91,6 +91,10 @@ All previously assumed decisions were confirmed by the user on 2026-11-09.
 | Q6 | Calendar of individual days or a range? | Individual days (D15). |
 | Q7 | Should candidates see their assigned time? | Yes (D7). |
 | Q8 | Deadline or reminders? | No; the dashboard status column is enough (D18). |
+| Q9 | Vercel and Neon accounts, who provisions? | The user provisions; the team gives exact steps (D61). |
+| Q16 | Lockout on the 5th wrong password? | 401 on the 5th, 423 after, correct password refused while locked, counter restarts after the lock expires (D59). |
+| Q17 | Which layer validates a save? | The route handler (D60). |
+| Q18 | Auth module file names? | `lib/auth/password.ts`, `lib/auth/session.ts`, plus `lib/http/errors.ts` and no `middleware.ts` (D60). |
 | Q10 | Data retention? | Admin can delete candidates; no automatic purge. |
 | Q11 | Production URL and base-URL env var? | Default `*.vercel.app` domain; links come from the page origin, so no env var (D49). |
 | Q12 | Does the password also hide saved data? | No, it only blocks edits (D24). |
